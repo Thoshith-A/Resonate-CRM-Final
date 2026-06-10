@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+
+# builds
+.next/
+dist/
+out/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env*.local
+
+# logs
+*.log
+dead-letter.log
+
+# misc
+.DS_Store
+.vercel
+coverage/

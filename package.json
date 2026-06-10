@@ -1,0 +1,25 @@
+{
+  "name": "resonate",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @resonate/crm --filter @resonate/channel-sim dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @resonate/crm db:generate",
+    "db:migrate": "pnpm --filter @resonate/crm db:migrate",
+    "db:seed": "pnpm --filter @resonate/crm db:seed"
+  },
+  "packageManager": "pnpm@11.5.3",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.16.0"
+  }
+}
