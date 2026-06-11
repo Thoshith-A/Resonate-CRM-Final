@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, MotionConfig, useReducedMotion } from "motion/react";
 import { Play, RotateCcw } from "lucide-react";
@@ -50,6 +51,7 @@ function resolveIntroTier(): "high" | "med" | null {
 }
 
 export function Hero() {
+  const router = useRouter();
   const reducedMotion = useReducedMotion();
   const [webgl, setWebgl] = useState<boolean | null>(null);
   const [tier, setTier] = useState<"high" | "med" | null>(null);
@@ -101,6 +103,14 @@ export function Hero() {
     const id = window.setTimeout(() => setRevealFallback(true), 2400);
     return () => window.clearTimeout(id);
   }, []);
+
+  // Warm the app routes while the landing/intro is on screen so the first
+  // in-app navigation ("Open dashboard") is instant — no on-demand wait.
+  useEffect(() => {
+    router.prefetch("/dashboard");
+    router.prefetch("/customers");
+    router.prefetch("/segments");
+  }, [router]);
 
   const handleSceneReady = useCallback(() => setSceneReady(true), []);
 
