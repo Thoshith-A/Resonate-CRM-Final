@@ -10,7 +10,11 @@
     "test": "pnpm -r test",
     "db:generate": "pnpm --filter @resonate/crm db:generate",
     "db:migrate": "pnpm --filter @resonate/crm db:migrate",
-    "db:seed": "pnpm --filter @resonate/crm db:seed"
+    "db:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "packageManager": "pnpm@11.5.3",
   "engines": {
@@ -20,6 +24,8 @@
     "@prisma/client": "^6.16.0"
   },
   "devDependencies": {
-    "prisma": "^6.16.0"
+    "@faker-js/faker": "^9.5.0",
+    "prisma": "^6.16.0",
+    "tsx": "^4.20.0"
   }
 }

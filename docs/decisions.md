@@ -2,6 +2,17 @@
 
 A running log, one entry per consequential decision. Finalized in Phase 7 with the "at scale" section.
 
+## Phase 1 — Ingestion + Customers
+
+### Aggregates maintained incrementally inside the ingest transaction
+`POST /api/orders` creates the order and updates the buyer's denormalized aggregates (`totalSpend`, `orderCount`, `avgOrderValue`, `firstOrderAt`, `lastOrderAt`) in ONE `prisma.$transaction`, so they can never drift from the underlying orders. The fold is a pure function (`applyOrderToAggregates`) that is order-independent — a late order with an earlier `placedAt` still moves `firstOrderAt` back — which is unit-tested and reused by the seed. Tradeoff (per the SPEC's interview prep): this adds write-path transaction cost; at scale aggregates become an async refresh / CDC pipeline rather than a synchronous update.
+
+### Ingestion contracts live in `packages/shared`
+`OrderInput` / `CustomerInput` / `OrderItem` zod schemas are shared because the channel simulator's conversion loop (Phase 6) posts orders back through `POST /api/orders` — the same contract validates the CRM API, the sim, and the seed's shape.
+
+### Local verification ran against an embedded Postgres, not Neon
+The dev machine has no Postgres/Docker and the SPEC's DB is Neon (provisioned at deploy). To verify Phase 1 ("seed completes; curl an order; aggregates update") without blocking on cloud credentials, the seed/migration/API were run against a user-space embedded Postgres on `localhost:5432` (matching the placeholder `DATABASE_URL`). For ongoing development and deploy, set `DATABASE_URL` to a Neon pooled connection string and run `pnpm db:deploy && pnpm db:seed`.
+
 ## Phase 0
 
 ### Shared package ships TypeScript source, not a build
