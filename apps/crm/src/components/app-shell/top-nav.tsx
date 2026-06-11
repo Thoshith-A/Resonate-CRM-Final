@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/customers", label: "Customers" },
+  { href: "/segments", label: "Segments" },
 ] as const;
 
 export function TopNav() {

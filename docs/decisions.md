@@ -2,6 +2,20 @@
 
 A running log, one entry per consequential decision. Finalized in Phase 7 with the "at scale" section.
 
+## Phase 2 — Segment engine
+
+### One AST schema in `packages/shared`, three consumers
+The recursive segment AST is defined once (`segment.ts`) and validated by the same `SegmentRulesSchema` at every boundary: the preview/create APIs, the visual builder (client-side, before previewing), and — in Phase 3 — the AI output. Fields and per-field comparators are whitelisted in the schema, so a hallucinated field (`loves_jazz`) is *structurally* unrepresentable: zod rejects it before the compiler ever runs. Depth is capped at 3 and empty groups are rejected by the schema, not the compiler.
+
+### `compileRules` is pure and `now` is injected
+`compileRules(ast, now)` returns a `Prisma.CustomerWhereInput` and takes no I/O, so it is exhaustively unit-tested (every comparator, nested AND/OR, date-relative inversion) without a database. Injecting `now` makes the `*_days_ago` fields deterministic. The date-relative inversion is the subtle bit: `last_order_days_ago > 90` compiles to `lastOrderAt < now − 90d` (a larger "days ago" is an older date); NULL dates (never-ordered customers) are naturally excluded.
+
+### Segment preview reconciles with the seed
+The preview endpoint counts via one indexed query over the denormalized aggregates. "High spenders gone quiet" (`total_spend ≥ ₹5,000 AND last_order_days_ago > 90`) previews **2,650** against Neon — within 2 of the seed's own independently-computed 2,648 (a day-boundary rounding difference), confirming the compiler matches intent.
+
+### Money is entered in rupees, stored in paise
+The builder's money inputs accept whole rupees (with a ₹ prefix) and store integer paise in the AST, keeping the contract canonical while the marketer thinks in rupees.
+
 ## Phase 1 — Ingestion + Customers
 
 ### Aggregates maintained incrementally inside the ingest transaction
