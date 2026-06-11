@@ -1,0 +1,21 @@
+feat(landing): procedural Web Audio score for the Stellar Genesis intro
+
+Synthesizes the whole soundtrack with the Web Audio API (no sample files,
+same all-procedural rule as the visuals): a deep space drone bed + star
+shimmer, a tension riser and doppler whoosh for the meteor, a sub-bass
+impact thump with a noise-burst explosion and reverb slam, a warm
+major-chord pad swell for the genesis, and a resolving tail on handoff.
+A convolution reverb is built from a decaying-noise impulse; a limiter
+guards the master from the impact transient.
+
+The engine is beat-driven off the timeline's onBeat callbacks, so it can
+join the film mid-flight if sound is enabled late. Muted by default behind
+a "Sound" toggle (browser autoplay needs a gesture); returning opt-in
+listeners resume on first interaction. Suspends with the tab, disposes on
+unmount.
+
+Verified headlessly by tapping the AudioContext through an AnalyserNode:
+context runs, no errors, and amplitude rises through omen, jumps on impact,
+peaks on the genesis swell, then resolves.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

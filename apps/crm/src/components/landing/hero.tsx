@@ -4,10 +4,12 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, MotionConfig, useReducedMotion } from "motion/react";
+import { Volume2, VolumeX } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Wordmark } from "./wordmark";
-import { PLAY_MODE, SESSION_KEY } from "./intro/constants";
+import { PLAY_MODE, SESSION_KEY, SOUND_PREF_KEY } from "./intro/constants";
+import { IntroAudioEngine } from "./intro/audio/audio-engine";
 import type { IntroBridge } from "./intro/IntroExperience";
 import { detectTier } from "./intro/tier";
 
@@ -55,8 +57,10 @@ export function Hero() {
   const [revealFallback, setRevealFallback] = useState(false);
   const [skipVisible, setSkipVisible] = useState(false);
   const [introDone, setIntroDone] = useState(false);
+  const [soundOn, setSoundOn] = useState(false);
 
   const skipFnRef = useRef<(() => void) | null>(null);
+  const audioRef = useRef<IntroAudioEngine | null>(null);
   const bridgeRef = useRef<IntroBridge | null>(null);
   if (bridgeRef.current === null) {
     bridgeRef.current = {
@@ -66,6 +70,7 @@ export function Hero() {
         if (beat === "system") {
           setSkipVisible(true);
         }
+        audioRef.current?.beat(beat as Parameters<IntroAudioEngine["beat"]>[0]);
       },
       onDone: () => {
         setIntroDone(true);
@@ -112,6 +117,82 @@ export function Hero() {
       setSkipVisible(false);
     }
   }, []);
+
+  const enableSound = useCallback(async () => {
+    if (!audioRef.current) {
+      audioRef.current = new IntroAudioEngine();
+    }
+    await audioRef.current.enable();
+    setSoundOn(true);
+    try {
+      window.localStorage.setItem(SOUND_PREF_KEY, "on");
+    } catch {
+      // Preference is a convenience; ignore storage failures.
+    }
+  }, []);
+
+  const toggleSound = useCallback(() => {
+    if (audioRef.current?.isEnabled) {
+      audioRef.current.disable();
+      setSoundOn(false);
+      try {
+        window.localStorage.setItem(SOUND_PREF_KEY, "off");
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    void enableSound();
+  }, [enableSound]);
+
+  // Dispose the audio graph when the hero unmounts.
+  useEffect(() => {
+    return () => {
+      audioRef.current?.dispose();
+      audioRef.current = null;
+    };
+  }, []);
+
+  // Suspend the score with the tab; resume when the listener returns.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        audioRef.current?.suspend();
+      } else {
+        audioRef.current?.resumeIfEnabled();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  // Returning listeners who opted in: resume on their first gesture (the
+  // browser's autoplay policy still requires one — we never force audio).
+  useEffect(() => {
+    if (!cinematic || introDone) {
+      return;
+    }
+    let pref: string | null = null;
+    try {
+      pref = window.localStorage.getItem(SOUND_PREF_KEY);
+    } catch {
+      pref = null;
+    }
+    if (pref !== "on") {
+      return;
+    }
+    const onFirstGesture = () => {
+      if (!audioRef.current?.isEnabled) {
+        void enableSound();
+      }
+    };
+    window.addEventListener("pointerdown", onFirstGesture, { once: true });
+    window.addEventListener("keydown", onFirstGesture, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", onFirstGesture);
+      window.removeEventListener("keydown", onFirstGesture);
+    };
+  }, [cinematic, introDone, enableSound]);
 
   // Scroll lock for the duration of the film.
   useEffect(() => {
@@ -324,6 +405,22 @@ export function Hero() {
             )}
           >
             Skip ⏎
+          </button>
+        ) : null}
+        {cinematic && !introDone ? (
+          <button
+            type="button"
+            onClick={toggleSound}
+            aria-pressed={soundOn}
+            aria-label={soundOn ? "Mute sound" : "Play with sound"}
+            className="absolute bottom-6 left-6 z-50 flex items-center gap-2 rounded-full border border-white/15 bg-black/30 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.28em] text-foreground/70 backdrop-blur transition-opacity duration-500 hover:text-foreground"
+          >
+            {soundOn ? (
+              <Volume2 className="size-3.5 text-copper" aria-hidden />
+            ) : (
+              <VolumeX className="size-3.5" aria-hidden />
+            )}
+            {soundOn ? "Sound on" : "Sound"}
           </button>
         ) : null}
       </section>

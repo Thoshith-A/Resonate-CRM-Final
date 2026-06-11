@@ -8,6 +8,8 @@
 export type IntroPlayMode = "always" | "session" | "off";
 export const PLAY_MODE: IntroPlayMode = "always";
 export const SESSION_KEY = "resonate-intro-played";
+/** Remembers whether the listener opted into the procedural score. */
+export const SOUND_PREF_KEY = "resonate-intro-sound";
 
 export type IntroTier = "high" | "med" | "low";
 
