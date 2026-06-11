@@ -14,6 +14,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { formatNumber, formatRupees } from "@/lib/format";
@@ -438,9 +444,6 @@ function GroupEditor({
   );
 }
 
-const SELECT_CLASS =
-  "h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
-
 function ConditionEditor({
   condition,
   onUpdate,
@@ -473,31 +476,37 @@ function ConditionEditor({
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/50 bg-background p-2">
-      <select
-        className={SELECT_CLASS}
+      <Select
         value={condition.field}
-        onChange={(e) => onFieldChange(e.target.value as SegmentField)}
-        aria-label="Field"
+        onValueChange={(value) => onFieldChange(value as SegmentField)}
       >
-        {SEGMENT_FIELD_DEFS.map((d) => (
-          <option key={d.field} value={d.field}>
-            {d.label}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger aria-label="Field" className="h-9 w-44">
+          {def.label}
+        </SelectTrigger>
+        <SelectContent>
+          {SEGMENT_FIELD_DEFS.map((d) => (
+            <SelectItem key={d.field} value={d.field}>
+              {d.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <select
-        className={SELECT_CLASS}
+      <Select
         value={condition.cmp}
-        onChange={(e) => onCmpChange(e.target.value as SegmentComparator)}
-        aria-label="Comparator"
+        onValueChange={(value) => onCmpChange(value as SegmentComparator)}
       >
-        {def.comparators.map((cmp) => (
-          <option key={cmp} value={cmp}>
-            {COMPARATOR_LABELS[cmp]}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger aria-label="Comparator" className="h-9 w-40">
+          {COMPARATOR_LABELS[condition.cmp]}
+        </SelectTrigger>
+        <SelectContent>
+          {def.comparators.map((cmp) => (
+            <SelectItem key={cmp} value={cmp}>
+              {COMPARATOR_LABELS[cmp]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <ValueInput condition={condition} onChange={(value) => patch({ value })} />
 
