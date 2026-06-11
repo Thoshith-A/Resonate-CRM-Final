@@ -6,6 +6,10 @@
  */
 const BASE = process.env.WARM_BASE ?? "http://localhost:3000";
 const ROUTES = ["/dashboard", "/customers", "/segments", "/segments/new"];
+// API routes compile on first hit too; warming the webhook avoids the sim's
+// first receipt flush racing a cold compile.
+const WARM_GET = ["/api/customers?pageSize=1", "/api/segments", "/api/campaigns"];
+const WARM_POST = ["/api/webhooks/receipts", "/api/segments/preview"];
 const DEADLINE = Date.now() + 120_000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -26,14 +30,30 @@ async function main() {
     }
     await sleep(1000);
   }
-  for (const route of ROUTES) {
+  const get = async (path) => {
     try {
-      await fetch(`${BASE}${route}`);
-      console.log(`[warm] compiled ${route}`);
+      await fetch(`${BASE}${path}`);
     } catch {
-      // Best-effort; ignore.
+      // Best-effort.
     }
-  }
+  };
+  // A bare POST compiles the route handler even if it 400s on an empty body.
+  const poke = async (path) => {
+    try {
+      await fetch(`${BASE}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+    } catch {
+      // Best-effort.
+    }
+  };
+  await Promise.all([
+    ...ROUTES.map(get),
+    ...WARM_GET.map(get),
+    ...WARM_POST.map(poke),
+  ]);
   console.log("[warm] routes ready");
 }
 

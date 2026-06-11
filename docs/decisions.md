@@ -2,6 +2,20 @@
 
 A running log, one entry per consequential decision. Finalized in Phase 7 with the "at scale" section.
 
+## Phase 4 — Send loop (the core)
+
+### Synchronous batched send (assumption: audiences ≤ ~10k)
+`POST /api/campaigns/:id/send` snapshots the audience into CommunicationLog rows, then dispatches to the sim in batches of 100 with concurrency 5 over HMAC-signed HTTP, each batch carrying an `Idempotency-Key`. A send must never crash halfway: a batch that can't reach the sim (after one retry + backoff) marks its rows `FAILED("channel_unreachable")` and the run continues; the campaign settles to `COMPLETED` once every row has left QUEUED (verified: killing the sim mid-send leaves 0 zombies). **At 10M customers / 1M-message campaigns** this becomes an **outbox + worker queue** — the route enqueues, workers drain with rate limiting and per-batch idempotency, and status is reconciled asynchronously. `export const maxDuration = 60` bounds the synchronous version.
+
+### Idempotent webhook ingestion + forward-only state machine
+`POST /api/webhooks/receipts` verifies the HMAC over the raw body and rejects batches outside a 5-minute skew window (forgery + replay-window defense). In ONE transaction it determines which `(vendorMessageId, eventType)` pairs are already in the append-only `ReceiptEvent` ledger (the idempotency key), inserts only the fresh ones, and folds ONLY those into CommunicationLog via a pure forward-only state machine (QUEUED<SENT<DELIVERED<READ<CLICKED; FAILED terminal from QUEUED/SENT). Replaying a batch therefore produces **zero duplicate state changes** (verified). A CLICKED arriving before DELIVERED still lands at CLICKED with both timestamps — order-independent.
+
+### The fold is a single bulk UPDATE, not N updates
+The first cut folded each message with its own `UPDATE` inside the interactive transaction; a 50-event batch's ~40 sequential round-trips to Neon blew the 5s transaction timeout (500s). Fixed by computing the fold in memory and applying it as one `UPDATE … FROM (VALUES …)` — four round-trips per batch regardless of size. **At scale** the webhook becomes a queue with a **partitioned batched consumer (partition by campaignId)** so receipt ingestion scales horizontally and per-campaign ordering is preserved.
+
+### In-memory sim scheduling
+The simulator schedules lifecycles with in-process timers and buffers receipts in memory, flushing every 3s (shuffled, signed). This is an acknowledged simulator tradeoff — a real vendor uses a durable queue; a process restart loses in-flight timers/buffer.
+
 ## Phase 3 — NL → Segment AI
 
 ### Provider deviation: Google/Gemini added alongside Anthropic/OpenAI

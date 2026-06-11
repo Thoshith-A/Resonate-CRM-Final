@@ -11,6 +11,28 @@ export {
   type OrderInput,
 } from "./ingestion";
 export {
+  ChannelSchema,
+  type Channel,
+  SendMessageItemSchema,
+  type SendMessageItem,
+  SendBatchRequestSchema,
+  type SendBatchRequest,
+  SendResultSchema,
+  type SendResult,
+  SendBatchResponseSchema,
+  type SendBatchResponse,
+  ReceiptEventTypeSchema,
+  type ReceiptEventType,
+  ReceiptEventPayloadSchema,
+  type ReceiptEventPayload,
+  ReceiptBatchSchema,
+  type ReceiptBatch,
+  ReceiptAckSchema,
+  type ReceiptAck,
+  SIGNATURE_HEADER,
+  IDEMPOTENCY_HEADER,
+} from "./channel";
+export {
   SEGMENT_NUMERIC_FIELDS,
   SEGMENT_FIELDS,
   type SegmentField,
