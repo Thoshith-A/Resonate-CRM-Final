@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,7 +17,7 @@ import { statusBadgeVariant, statusLabel } from "./status";
 
 type FetchState =
   | { status: "loading" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; notFound?: boolean }
   | { status: "loaded"; data: CampaignInsightsData };
 
 const POLL_MS = 3000;
@@ -38,13 +38,25 @@ export function CampaignInsights({ id }: { id: string }) {
       }
       fetch(`/api/campaigns/${id}`, { signal: controller.signal })
         .then(async (res) => {
+          // A 404 means the campaign doesn't exist (e.g. the demo was reset) —
+          // a terminal, not-found state, not a retryable error.
+          if (res.status === 404) {
+            if (!cancelled) {
+              setState({
+                status: "error",
+                message: "This campaign no longer exists — it may have been reset or deleted.",
+                notFound: true,
+              });
+            }
+            return null;
+          }
           if (!res.ok) {
             throw new Error(`Request failed (${res.status})`);
           }
           return (await res.json()) as CampaignInsightsData;
         })
         .then((data) => {
-          if (!cancelled) {
+          if (data && !cancelled) {
             setState({ status: "loaded", data });
           }
         })
@@ -82,15 +94,30 @@ export function CampaignInsights({ id }: { id: string }) {
         <LoadingState />
       ) : state.status === "error" ? (
         <div className="rounded-lg border border-border/60 py-16 text-center">
-          <p className="text-sm text-muted-foreground">{state.message}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={() => setReloadKey((key) => key + 1)}
-          >
-            Retry
-          </Button>
+          {state.notFound ? (
+            <>
+              <p className="font-display text-lg tracking-tight">Campaign not found</p>
+              <p className="mt-1 text-sm text-muted-foreground">{state.message}</p>
+              <Link
+                href="/dashboard"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4")}
+              >
+                Back to dashboard
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">{state.message}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => setReloadKey((key) => key + 1)}
+              >
+                Retry
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <Loaded data={state.data} />
