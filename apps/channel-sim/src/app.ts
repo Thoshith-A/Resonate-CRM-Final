@@ -112,7 +112,7 @@ export function createApp(dispatch: DispatchLifecycle): express.Express {
     const body: HealthResponse = HealthResponseSchema.parse({
       status: "ok",
       service: "channel-sim",
-      version: "0.1.0",
+      version: "0.2.0-rootfix",
       time: new Date().toISOString(),
     });
     // Append a config diagnostic (never leaks the secret) so a misconfigured

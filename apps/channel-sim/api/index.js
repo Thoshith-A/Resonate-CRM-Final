@@ -358,7 +358,7 @@ function createApp(dispatch) {
     const body = HealthResponseSchema.parse({
       status: "ok",
       service: "channel-sim",
-      version: "0.1.0",
+      version: "0.2.0-rootfix",
       time: (/* @__PURE__ */ new Date()).toISOString()
     });
     res.status(200).json({
