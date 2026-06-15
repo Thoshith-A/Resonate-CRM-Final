@@ -17,6 +17,6 @@ services:
       - key: WEBHOOK_SECRET
         sync: false # MUST match the CRM's WEBHOOK_SECRET
       - key: SIM_SPEED
-        value: "4"
+        value: "10"
       - key: CONVERSION_RATE
         value: "0.08"
