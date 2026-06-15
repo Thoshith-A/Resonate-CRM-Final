@@ -12,7 +12,7 @@ import {
 } from "@resonate/shared";
 import { verifyPayload } from "@resonate/shared/crypto";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { config } from "./config";
+import { config, configError } from "./config";
 import { logger } from "./logger";
 import { cacheBatch, getCachedBatch, putMessage, type MessageRecord } from "./store";
 
@@ -85,7 +85,17 @@ export function createApp(dispatch: DispatchLifecycle): express.Express {
       version: "0.1.0",
       time: new Date().toISOString(),
     });
-    res.status(200).json(body);
+    // Append a config diagnostic (never leaks the secret) so a misconfigured
+    // deploy is visible over HTTP instead of only crashing on a real send.
+    res.status(200).json({
+      ...body,
+      config: {
+        ok: configError === null,
+        webhookSecretSet: config.webhookSecret.length >= 8,
+        crmUrl: config.crmUrl,
+        ...(configError !== null ? { error: configError } : {}),
+      },
+    });
   });
 
   app.post("/v1/messages", (req: Request, res: Response) => {

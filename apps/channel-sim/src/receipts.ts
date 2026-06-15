@@ -1,4 +1,6 @@
 import { appendFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ReceiptBatchSchema,
@@ -24,7 +26,20 @@ const MAX_BATCH_SIZE = 500;
 const RETRY_BACKOFF_MS = [500, 1000, 2000, 4000, 8000] as const;
 const RECEIPTS_PATH = "/api/webhooks/receipts";
 
-const DEAD_LETTER_PATH = fileURLToPath(new URL("../dead-letter.log", import.meta.url));
+/**
+ * Resolve the dead-letter path lazily and defensively. `import.meta.url` is
+ * only valid in an ESM context; if the bundle is ever evaluated as CJS (some
+ * serverless runtimes) referencing it at module load would crash the whole
+ * function. Falling back to the OS temp dir also covers serverless, where the
+ * deploy dir is read-only but the temp dir is writable.
+ */
+function deadLetterPath(): string {
+  try {
+    return fileURLToPath(new URL("../dead-letter.log", import.meta.url));
+  } catch {
+    return join(tmpdir(), "channel-sim-dead-letter.log");
+  }
+}
 
 const buffer: ReceiptEventPayload[] = [];
 
@@ -67,7 +82,7 @@ async function postBatch(body: string, signature: string): Promise<boolean> {
 
 async function deadLetter(body: string): Promise<void> {
   try {
-    await appendFile(DEAD_LETTER_PATH, `${body}\n`, "utf8");
+    await appendFile(deadLetterPath(), `${body}\n`, "utf8");
   } catch (err) {
     logger.error("dead-letter append failed", {
       message: err instanceof Error ? err.message : String(err),

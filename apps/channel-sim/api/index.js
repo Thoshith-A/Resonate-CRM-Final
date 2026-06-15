@@ -261,19 +261,18 @@ var EnvSchema = z8.object({
   CONVERSION_RATE: z8.coerce.number().min(0).max(1).default(0.08)
 });
 var parsed = EnvSchema.safeParse(process.env);
-if (!parsed.success) {
-  const problems = parsed.error.issues.map((issue) => `  - ${issue.path.join(".") || "(env)"}: ${issue.message}`).join("\n");
-  const message = `channel-sim: invalid environment configuration
-${problems}`;
-  console.error(message);
-  throw new Error(message);
+var configError = parsed.success ? null : `channel-sim: invalid environment configuration
+${parsed.error.issues.map((issue) => `  - ${issue.path.join(".") || "(env)"}: ${issue.message}`).join("\n")}`;
+if (configError) {
+  console.error(configError);
 }
+var data = parsed.success ? parsed.data : { PORT: 4001, CRM_URL: "http://localhost:3000", WEBHOOK_SECRET: "", SIM_SPEED: 1, CONVERSION_RATE: 0.08 };
 var config = Object.freeze({
-  port: parsed.data.PORT,
-  crmUrl: parsed.data.CRM_URL,
-  webhookSecret: parsed.data.WEBHOOK_SECRET,
-  simSpeed: parsed.data.SIM_SPEED,
-  conversionRate: parsed.data.CONVERSION_RATE
+  port: data.PORT,
+  crmUrl: data.CRM_URL,
+  webhookSecret: data.WEBHOOK_SECRET,
+  simSpeed: data.SIM_SPEED,
+  conversionRate: data.CONVERSION_RATE
 });
 
 // src/logger.ts
@@ -339,7 +338,15 @@ function createApp(dispatch) {
       version: "0.1.0",
       time: (/* @__PURE__ */ new Date()).toISOString()
     });
-    res.status(200).json(body);
+    res.status(200).json({
+      ...body,
+      config: {
+        ok: configError === null,
+        webhookSecretSet: config.webhookSecret.length >= 8,
+        crmUrl: config.crmUrl,
+        ...configError !== null ? { error: configError } : {}
+      }
+    });
   });
   app2.post("/v1/messages", (req, res) => {
     if (!verifyPayload(config.webhookSecret, req.rawBody ?? "", req.header(SIGNATURE_HEADER))) {
@@ -551,10 +558,18 @@ function getFunnel(channel) {
 
 // src/receipts.ts
 import { appendFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 var RETRY_BACKOFF_MS2 = [500, 1e3, 2e3, 4e3, 8e3];
 var RECEIPTS_PATH = "/api/webhooks/receipts";
-var DEAD_LETTER_PATH = fileURLToPath(new URL("../dead-letter.log", import.meta.url));
+function deadLetterPath() {
+  try {
+    return fileURLToPath(new URL("../dead-letter.log", import.meta.url));
+  } catch {
+    return join(tmpdir(), "channel-sim-dead-letter.log");
+  }
+}
 function shuffle(items) {
   for (let i = items.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -586,7 +601,7 @@ async function postBatch(body, signature) {
 }
 async function deadLetter(body) {
   try {
-    await appendFile(DEAD_LETTER_PATH, `${body}
+    await appendFile(deadLetterPath(), `${body}
 `, "utf8");
   } catch (err) {
     logger.error("dead-letter append failed", {

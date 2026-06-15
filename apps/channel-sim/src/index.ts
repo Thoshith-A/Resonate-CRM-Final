@@ -1,9 +1,15 @@
 import { createApp, type AcceptedMessage } from "./app";
-import { config, printConfig } from "./config";
+import { config, configError, printConfig } from "./config";
 import { funnelSummary } from "./funnels";
 import { scheduleLifecycle } from "./lifecycle";
 import { logger } from "./logger";
 import { startReceiptFlusher } from "./receipts";
+
+// The standalone server fails fast on bad config (the serverless entry boots
+// degraded and reports it on /health instead — see config.ts).
+if (configError) {
+  process.exit(1);
+}
 
 /**
  * Standalone long-running server (local + Render). The funnel plays out on
