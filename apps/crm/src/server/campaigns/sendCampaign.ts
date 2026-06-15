@@ -4,7 +4,6 @@ import {
   IDEMPOTENCY_HEADER,
   SIGNATURE_HEADER,
   SendBatchResponseSchema,
-  WINDOW_ORDER,
   demoDispatchDelayMs,
   type Channel,
   type SegmentRules,
@@ -17,7 +16,7 @@ import { getEnv } from "../env";
 import { ApiError, badRequest, notFound } from "../api";
 import { compileRules } from "../segments/compile";
 import { renderForCustomer, type MergeCustomer } from "./template";
-import { routeChannels, type CustomerWithAggregates } from "./routeChannel";
+import { routeChannelsRuleBased, type CustomerWithAggregates } from "./routeChannel";
 import { inferSendWindow } from "./inferSendWindows";
 
 const BATCH_SIZE = 100;
@@ -155,7 +154,10 @@ export async function sendCampaign(campaignId: string): Promise<SendCampaignResu
   const aiRouted = campaign.channelStrategy === "AI_ROUTED";
   const routeByCustomer = new Map<string, { channel: Channel; reason: string }>();
   if (aiRouted) {
-    const decisions = await routeChannels(
+    // Deterministic, in-process routing (no LLM) so a full-audience send always
+    // finishes inside the serverless budget. The AI router powers the sampled,
+    // cached routing PREVIEW shown in the builder; here we apply the same rules.
+    const decisions = routeChannelsRuleBased(
       customers.map<CustomerWithAggregates>((c) => ({
         id: c.id,
         city: c.city,
@@ -258,14 +260,12 @@ export async function sendCampaign(campaignId: string): Promise<SendCampaignResu
     await prisma.campaign.update({ where: { id: campaignId }, data: campaignData });
   }
 
-  if (smartWindows) {
-    // Schedule all windows (MORNING at 0ms) and return immediately — the waves
-    // dispatch after the HTTP response so the page shows them land live.
-    scheduleWindowedDispatch(campaignId, items, env);
-    return { campaignId, status: "SENDING", audienceSize: customers.length, sent: 0, failed: 0 };
-  }
-
-  // INSTANT: dispatch everything now, settle COMPLETED.
+  // Dispatch the ENTIRE audience in-request — never via post-response timers,
+  // which a serverless function (Vercel) freezes the moment it answers. For
+  // SMART_WINDOWS each message carries its own `scheduledFor`, so the always-on
+  // channel-sim staggers the funnel across windows on its OWN timers (see
+  // channel-sim/src/index.ts dispatchOnTimers); INSTANT messages are due now.
+  // Either way the request settles COMPLETED inside maxDuration.
   const batches = chunk(items, BATCH_SIZE);
   await runPool(batches, CONCURRENCY, (batch) => dispatchBatch(campaignId, batch, env));
   await prisma.campaign.update({ where: { id: campaignId }, data: { status: "COMPLETED" } });
@@ -278,47 +278,6 @@ export async function sendCampaign(campaignId: string): Promise<SendCampaignResu
   const failed = grouped.find((g) => g.status === "FAILED")?._count._all ?? 0;
   const sent = customers.length - failed;
   return { campaignId, status: "COMPLETED", audienceSize: customers.length, sent, failed };
-}
-
-/**
- * @deprecated-at-scale — replace with a durable queue (BullMQ / Inngest) at
- * production volume. See docs/decisions.md. Staggers SMART_WINDOWS dispatch:
- * Every window fires on a compressed setTimeout timer (MORNING at 0ms), so the
- * send route returns SENDING immediately and the waves dispatch AFTER the HTTP
- * response — the page is already open and shows them land live. The last window
- * settles the campaign to COMPLETED.
- */
-function scheduleWindowedDispatch(
-  campaignId: string,
-  items: DispatchItem[],
-  env: ReturnType<typeof getEnv>,
-): void {
-  const buckets = new Map<SendWindowName, DispatchItem[]>();
-  for (const item of items) {
-    const w = item.sendWindow ?? "MORNING";
-    const list = buckets.get(w) ?? [];
-    list.push(item);
-    buckets.set(w, list);
-  }
-  const present = WINDOW_ORDER.filter((w) => (buckets.get(w)?.length ?? 0) > 0);
-  const lastWindow = present[present.length - 1];
-
-  const dispatchBucket = async (window: SendWindowName): Promise<void> => {
-    const bucket = buckets.get(window) ?? [];
-    const batches = chunk(bucket, BATCH_SIZE);
-    await runPool(batches, CONCURRENCY, (batch) => dispatchBatch(campaignId, batch, env));
-    if (window === lastWindow) {
-      await prisma.campaign.update({ where: { id: campaignId }, data: { status: "COMPLETED" } });
-    }
-  };
-
-  for (const window of present) {
-    setTimeout(() => {
-      void dispatchBucket(window).catch((error) => {
-        console.error("[send] windowed dispatch failed:", error instanceof Error ? error.message : error);
-      });
-    }, demoDispatchDelayMs(window));
-  }
 }
 
 async function dispatchBatch(

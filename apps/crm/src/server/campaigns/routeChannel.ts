@@ -144,6 +144,36 @@ export async function routeChannels(
   return perBatch.flat();
 }
 
+/**
+ * Deterministic, LLM-free channel routing — applies the SAME priority rules the
+ * AI router is instructed to follow (see SYSTEM_PROMPT), in pure code. Used by
+ * the SEND path so a full-audience send completes well inside the serverless
+ * function budget (Vercel Hobby = 60s) regardless of audience size or AI billing
+ * state — routing a 900+ audience via the LLM is ~38 sequential calls and blows
+ * the limit. The AI router still powers the (sampled, cached) routing PREVIEW in
+ * the campaign builder, which is where its nuance is showcased.
+ */
+export function routeChannelsRuleBased(
+  customers: CustomerWithAggregates[],
+): ChannelRoutingResult[] {
+  return customers.map((c) => {
+    const tier1 = TIER1_CITIES.has(c.city);
+    const tags = c.tags ?? [];
+    // Priority order matches the AI router's prompt (earlier wins ties).
+    if (c.orderCount === 0)
+      return { customerId: c.id, channel: "EMAIL", reason: "Cold customer (no orders) — email is low-friction.", confidence: 0.7 };
+    if (c.totalSpend > HIGH_SPEND_PAISE)
+      return { customerId: c.id, channel: "RCS", reason: "High spender — RCS rich cards for a premium feel.", confidence: 0.8 };
+    if (tags.includes("wholesale"))
+      return { customerId: c.id, channel: "EMAIL", reason: "Wholesale account — email fits the B2B pattern.", confidence: 0.75 };
+    if (tags.includes("subscriber"))
+      return { customerId: c.id, channel: "WHATSAPP", reason: "Subscriber — WhatsApp suits the recurring relationship.", confidence: 0.8 };
+    if (tier1)
+      return { customerId: c.id, channel: "WHATSAPP", reason: "Tier-1 city — high smartphone penetration favours WhatsApp.", confidence: 0.7 };
+    return { customerId: c.id, channel: "SMS", reason: "Non-tier-1 — SMS for the widest reliable reach.", confidence: 0.6 };
+  });
+}
+
 function tallyDistribution(decisions: ChannelRoutingResult[]): {
   whatsapp: number;
   sms: number;
