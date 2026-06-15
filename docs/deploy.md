@@ -44,3 +44,10 @@ Set Vercel's `CHANNEL_SIM_URL` to the Render URL → **redeploy** the CRM.
 - **`WEBHOOK_SECRET` mismatch** → the sim's receipts get `401`ed and dead-letter; the funnel never advances past SENT. Same value on both sides.
 - **`CHANNEL_SIM_URL` still a placeholder** → sends mark rows `FAILED("channel_unreachable")`. Update it (step 4) and redeploy.
 - Use the Neon **pooled** string for serverless; the direct string can exhaust connections.
+
+## Serverless caveats (and the demo recommendation)
+Most of the app runs perfectly on Vercel (dashboard, customers, segments, NL→segment, AI drafting, AI channel routing, INSTANT sends, insights, copilot, Delivery Universe, the lift analytics). Two features rely on **work that continues after the HTTP response**, which a serverless function can't do (it's frozen at `maxDuration`):
+- **Smart Windows** staggers later waves with `setTimeout` after the send returns — on Vercel only the immediate (morning) wave fires; the afternoon/evening/night waves won't. It works fully on a long-running runtime.
+- Very large **AI-routed / INSTANT sends** do all their dispatch within the request; an audience big enough to exceed `maxDuration=60` will be cut off.
+
+**For a flawless live demo:** either (a) record the **Smart Windows + waves** flow on **localhost** (long-running, all waves + the lift land in ~15s), or (b) on the Vercel URL demo **Send Now** on a **few-hundred-customer** segment (completes well within 60s). Everything else demos identically in both. The production fix — an outbox + durable queue (BullMQ/Inngest) for staggered/large dispatch — is documented in `decisions.md`.
