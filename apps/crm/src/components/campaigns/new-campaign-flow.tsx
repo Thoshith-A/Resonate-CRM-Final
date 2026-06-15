@@ -146,6 +146,15 @@ export function NewCampaignFlow({ initialSegmentId }: { initialSegmentId: string
     };
   }, [segmentsReloadKey]);
 
+  // Wake the channel-sim ahead of the send. Render's free dyno cold-starts when
+  // idle; pinging /health from the message + review steps means the dispatch
+  // hits a warm server and finishes inside the serverless budget. Best-effort.
+  useEffect(() => {
+    if (step >= 2) {
+      void fetch("/api/channel-sim/warm").catch(() => {});
+    }
+  }, [step]);
+
   // Preselect from ?segment= once, if it matches a loaded segment.
   useEffect(() => {
     if (preselectedRef.current || segmentsState.status !== "loaded") {
@@ -296,6 +305,8 @@ export function NewCampaignFlow({ initialSegmentId }: { initialSegmentId: string
     }
     setSending(true);
     setSendError(null);
+
+    let campaignId: string;
     try {
       const createRes = await fetch("/api/campaigns", {
         method: "POST",
@@ -316,17 +327,21 @@ export function NewCampaignFlow({ initialSegmentId }: { initialSegmentId: string
       if (!createRes.ok) {
         throw new Error(`Create failed (${createRes.status})`);
       }
-      const campaign = (await createRes.json()) as CreatedCampaign;
-
-      const sendRes = await fetch(`/api/campaigns/${campaign.id}/send`, { method: "POST" });
-      if (!sendRes.ok) {
-        throw new Error(`Send failed (${sendRes.status})`);
-      }
-      router.push(`/campaigns/${campaign.id}`);
+      campaignId = ((await createRes.json()) as CreatedCampaign).id;
     } catch (error: unknown) {
       setSendError(error instanceof Error ? error.message : "Something went wrong.");
       setSending(false);
+      return;
     }
+
+    // Kick off the send and go straight to the results page. The send is
+    // resumable and budget-bounded server-side, so a gateway timeout (504) or a
+    // dropped connection just means "not finished yet" — the campaign page polls
+    // and re-invokes /send to drain the rest. Landing there immediately means
+    // the marketer always sees the audience snapshot and watches it fill in live
+    // (rather than dead-ending on a 504), no matter how large the audience.
+    void fetch(`/api/campaigns/${campaignId}/send`, { method: "POST" }).catch(() => {});
+    router.push(`/campaigns/${campaignId}`);
   };
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -56,10 +56,29 @@ const funnelSignature = (data: CampaignInsightsData): string => {
 export function CampaignInsights({ id }: { id: string }) {
   const [state, setState] = useState<FetchState>({ status: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
+  // Guards re-entrant resume calls: at most one /send is in flight at a time.
+  const resumingRef = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
+
+    // Finish a send that hasn't fully dispatched yet. A /send is budget-bounded
+    // and resumable (see sendCampaign.ts): if the campaign is still SENDING with
+    // QUEUED rows — because the first request hit its time budget or timed out —
+    // re-invoking /send drains the next wave. Polling keeps calling until the
+    // outbox is empty and the campaign settles COMPLETED.
+    const resumeIfStalled = (data: CampaignInsightsData) => {
+      if (data.status !== "SENDING" || data.statusCounts.QUEUED <= 0 || resumingRef.current) {
+        return;
+      }
+      resumingRef.current = true;
+      fetch(`/api/campaigns/${id}/send`, { method: "POST" })
+        .catch(() => {})
+        .finally(() => {
+          resumingRef.current = false;
+        });
+    };
 
     const load = (initial: boolean) => {
       if (initial) {
@@ -87,6 +106,7 @@ export function CampaignInsights({ id }: { id: string }) {
         .then((data) => {
           if (data && !cancelled) {
             setState({ status: "loaded", data });
+            resumeIfStalled(data);
           }
         })
         .catch((error: unknown) => {
