@@ -331,6 +331,29 @@ function createApp(dispatch) {
     });
     next();
   });
+  app2.get("/", (_req, res) => {
+    const healthy = configError === null;
+    res.status(200).type("html").send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Resonate channel-sim</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center;
+    font:15px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; background:#0b0f17; color:#e6edf3; }
+  .card { max-width:34rem; padding:2rem; }
+  h1 { font-size:1.1rem; margin:0 0 .75rem; }
+  .dot { color:${healthy ? "#3fb950" : "#d29922"}; }
+  a { color:#58a6ff; } code { background:#161b22; padding:.1rem .35rem; border-radius:4px; }
+  .muted { color:#8b949e; }
+</style></head>
+<body><div class="card">
+  <h1><span class="dot">\u25CF</span> Resonate channel-sim \u2014 ${healthy ? "running" : "running (check config)"}</h1>
+  <p>Outbound message simulator for the Resonate CRM. This is a <b>backend service</b>, not the app UI:
+  the CRM calls <code>POST /v1/messages</code> and the sim posts signed delivery receipts back to the CRM.</p>
+  <p class="muted">Health JSON: <a href="/health">/health</a></p>
+</div></body></html>`);
+  });
   app2.get("/health", (_req, res) => {
     const body = HealthResponseSchema.parse({
       status: "ok",
