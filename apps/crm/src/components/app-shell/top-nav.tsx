@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wordmark } from "@/components/landing/wordmark";
+import { CopilotPanel } from "@/components/copilot/copilot-panel";
 import { ResetDemoButton } from "@/components/app-shell/reset-demo-button";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +44,10 @@ export function TopNav() {
             })}
           </nav>
         </div>
-        <ResetDemoButton />
+        <div className="flex items-center gap-1">
+          <CopilotPanel />
+          <ResetDemoButton />
+        </div>
       </div>
     </header>
   );

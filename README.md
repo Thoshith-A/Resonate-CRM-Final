@@ -101,6 +101,7 @@ Health checks: `http://localhost:3000/api/health` and `http://localhost:4001/hea
 | `POST /ai/segment-from-text` | NL → segment AST (`generateObject` + zod whitelist) |
 | `POST /ai/draft-messages` | 3 message variants (merge-field whitelisted, SMS ≤160) |
 | `POST /ai/campaign-summary` | Plain-English summary of a campaign's real stats |
+| `POST /ai/copilot` | Agentic copilot — tools (`preview_segment` / `draft_message` / `create_and_send_campaign`) call the same `src/server` functions the UI does |
 | `POST /campaigns`, `GET /campaigns`, `GET /campaigns/[id]` | Create / list / insights |
 | `POST /campaigns/[id]/send` | Snapshot audience → dispatch (batched, signed, idempotent) |
 | `GET /campaigns/[id]/feed` | Recent comms for the live delivery feed |

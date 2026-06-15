@@ -2,6 +2,17 @@
 
 A running log, one entry per consequential decision. The headline tradeoffs are summarized at the end under **At scale (consolidated)**.
 
+## Phase 8 — Copilot (optional)
+
+### The copilot is a second consumer of the SAME domain layer
+Its tools (`preview_segment`, `draft_message`, `create_and_send_campaign`) call `previewSegment` / `draftMessages` / (`createSegment` + `createCampaign` + `sendCampaign`) — the exact functions the UI routes call. There's no separate "AI backend" to drift from the product. Tool inputs are plain-English strings mapped through `segmentFromText`, so the model never hand-builds a rule AST (keeps the tool JSON-schema flat for Gemini) and the field whitelist still guarantees no hallucinated segment fields reach the DB.
+
+### Send is gated by the system prompt, not a hard server gate
+`create_and_send_campaign` contacts the whole audience, so the system prompt forbids it until the user explicitly confirms (verified: it previews + drafts + asks, sends only after "go ahead"). This is a *soft* gate — adequate for a single-tenant demo. A hard gate would split it into propose (returns a draft campaign id) + a separate confirm endpoint the user action hits; noted as the productionization step.
+
+### Non-streaming `generateText` + `stepCountIs(8)`
+Multi-step tool-calling (preview → draft → send in one turn) without a streaming client or `@ai-sdk/react`; the turn returns `{ text, toolEvents }` so the panel can render activity chips, and it's curl-testable. At scale a copilot would stream tokens + tool states over SSE.
+
 ## Phase 7 — Hardening & deploy
 
 ### Audiences are snapshotted at send time, not dynamic
