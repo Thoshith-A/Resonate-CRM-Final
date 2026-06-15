@@ -145,36 +145,50 @@ function buildTools() {
  * Tool failures degrade to `ok:false` events rather than throwing.
  */
 export async function runCopilot(messages: CopilotMessage[]): Promise<CopilotResult> {
-  const model = getAiModel(); // throws ApiError(503) if no provider key
-
   const modelMessages: ModelMessage[] = messages.map((m) => ({ role: m.role, content: m.content }));
 
-  const result = await generateText({
-    model,
-    system: SYSTEM_PROMPT,
-    tools: buildTools(),
-    messages: modelMessages,
-    stopWhen: stepCountIs(8),
-  });
+  try {
+    const model = getAiModel(); // throws ApiError(503) if no provider key
+    const result = await generateText({
+      model,
+      system: SYSTEM_PROMPT,
+      tools: buildTools(),
+      messages: modelMessages,
+      stopWhen: stepCountIs(8),
+    });
 
-  const toolEvents: CopilotToolEvent[] = [];
-  for (const step of result.steps) {
-    for (const tr of step.toolResults ?? []) {
-      const out = tr.output as { ok?: boolean; summary?: string; campaignUrl?: string } | undefined;
-      toolEvents.push({
-        name: tr.toolName,
-        ok: out?.ok ?? true,
-        summary: out?.summary ?? tr.toolName,
-        ...(out?.campaignUrl ? { campaignUrl: out.campaignUrl } : {}),
-      });
+    const toolEvents: CopilotToolEvent[] = [];
+    for (const step of result.steps) {
+      for (const tr of step.toolResults ?? []) {
+        const out = tr.output as { ok?: boolean; summary?: string; campaignUrl?: string } | undefined;
+        toolEvents.push({
+          name: tr.toolName,
+          ok: out?.ok ?? true,
+          summary: out?.summary ?? tr.toolName,
+          ...(out?.campaignUrl ? { campaignUrl: out.campaignUrl } : {}),
+        });
+      }
     }
+
+    const text =
+      result.text.trim() ||
+      (toolEvents.length
+        ? toolEvents[toolEvents.length - 1]?.summary ?? "Done."
+        : "I'm not sure how to help with that yet — try describing an audience.");
+
+    return { text, toolEvents };
+  } catch (error) {
+    // Model unavailable (outage / depleted credits) — stay graceful instead of
+    // erroring. Guide the user to the equivalent direct workflow.
+    console.error("[ai] copilot degraded:", error instanceof Error ? error.message : error);
+    const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
+    return {
+      text: pick([
+        "I can preview an audience, draft a message, and create & send a campaign. Tell me an audience like *\"high spenders in Mumbai quiet for 90 days\"* — or build it directly under **Segments → New**.",
+        "Describe who you'd like to reach (e.g. *\"lapsed subscribers\"*) and what you want to say, and I'll help set it up. You can also drive it manually from **Campaigns → New**.",
+        "Happy to help draft and launch a campaign. Try *\"draft a win-back message for lapsed VIPs\"* — or head to **Campaigns → New** to do it step by step.",
+      ]),
+      toolEvents: [],
+    };
   }
-
-  const text =
-    result.text.trim() ||
-    (toolEvents.length
-      ? toolEvents[toolEvents.length - 1]?.summary ?? "Done."
-      : "I'm not sure how to help with that yet — try describing an audience.");
-
-  return { text, toolEvents };
 }

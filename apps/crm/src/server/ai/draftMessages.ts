@@ -92,21 +92,33 @@ async function attempt(
   return object.variants;
 }
 
-/** A safe, editable starting point when the model is unavailable. */
+/**
+ * Safe, editable starting points when the model is unavailable. Draws from a
+ * pool of distinct angles and shuffles, so re-drafting yields different copy
+ * each time rather than the same three lines. Uses only whitelisted merge
+ * fields, so a fallback can never reference a field the renderer won't fill.
+ */
 function fallbackVariants(input: DraftMessagesInput): MessageVariant[] {
   const objective = input.objective.trim().replace(/\.$/, "");
-  const raw: MessageVariant[] = [
+  const pool: MessageVariant[] = [
     { label: "Direct", text: `Hi {{first_name}}, ${objective}. — Brewline ☕` },
-    {
-      label: "Warm",
-      text: `Hi {{first_name}}, we've missed you in {{city}}. ${objective} — your next cup is on us. ☕`,
-    },
+    { label: "Warm", text: `Hi {{first_name}}, we've missed you in {{city}}. ${objective} — your next cup's on us. ☕` },
     { label: "Short", text: `{{first_name}}, ${objective}. ☕ Brewline` },
+    { label: "Playful", text: `Psst {{first_name}} 👀 your coffee's getting lonely. ${objective}! ☕ — Brewline` },
+    { label: "Premium", text: `{{first_name}}, a little something from Brewline: ${objective}. Crafted for you in {{city}}. ✨` },
+    { label: "Urgent", text: `Only this week, {{first_name}} — ${objective}. Don't miss it. ☕ Brewline` },
+    { label: "Curious", text: `{{first_name}}, it's been {{last_order_days_ago}} days ☕ ${objective}. Ready for another?` },
   ];
-  if (input.channel === "SMS") {
-    return raw.map((v) => ({ ...v, text: v.text.slice(0, SMS_LIMIT) }));
+  // Shuffle (Fisher–Yates) and take three distinct angles.
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
   }
-  return raw;
+  const chosen = pool.slice(0, 3);
+  if (input.channel === "SMS") {
+    return chosen.map((v) => ({ ...v, text: v.text.slice(0, SMS_LIMIT) }));
+  }
+  return chosen;
 }
 
 /**
