@@ -11,7 +11,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
-        value: "20"
+        value: "22" # pnpm 11.5.3 (packageManager pin) requires Node >= 22.13
       - key: CRM_URL
         sync: false # set to the Vercel URL after the CRM deploys
       - key: WEBHOOK_SECRET
