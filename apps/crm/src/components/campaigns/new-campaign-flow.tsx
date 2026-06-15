@@ -303,6 +303,12 @@ export function NewCampaignFlow({ initialSegmentId }: { initialSegmentId: string
     if (!selectedSegment || sending || messageTemplate.trim().length === 0) {
       return;
     }
+    if (effectiveName.trim().length === 0) {
+      // Defensive: the step-2 Continue gate already blocks an empty name, but a
+      // campaign must have one — surface it rather than 422-ing on create.
+      setSendError("Give the campaign a name before sending.");
+      return;
+    }
     setSending(true);
     setSendError(null);
 
@@ -668,6 +674,7 @@ function MessageStep({
             value={brandVoice}
             onChange={(e) => onBrandVoiceChange(e.target.value)}
             placeholder="warm, premium, concise"
+            maxLength={120}
           />
         </div>
 
@@ -786,6 +793,7 @@ function MessageStep({
           value={messageTemplate}
           onChange={(e) => onMessageTemplateChange(e.target.value)}
           rows={5}
+          maxLength={2000}
           placeholder="Hi {{first_name}}, we miss you in {{city}}…"
         />
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -821,7 +829,10 @@ function MessageStep({
         <Button variant="outline" onClick={onBack}>
           Back
         </Button>
-        <Button onClick={onContinue} disabled={messageTemplate.trim().length === 0}>
+        <Button
+          onClick={onContinue}
+          disabled={messageTemplate.trim().length === 0 || name.trim().length === 0}
+        >
           Continue
         </Button>
       </div>

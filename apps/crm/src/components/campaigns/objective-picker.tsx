@@ -129,6 +129,7 @@ export function ObjectivePicker({
                 }
               }}
               placeholder="Search 100 win-back tactics…"
+              maxLength={300}
               className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>

@@ -7,21 +7,42 @@ import { getAiModel } from "./provider";
 export type MessageVariant = { label: string; text: string };
 export type DraftMessagesResult = { variants: MessageVariant[]; degraded: boolean };
 
-// A campaign objective is optional in the builder (the campaign record allows
-// null too), so drafting must work without one rather than 422-ing on an empty
-// field. When it's blank, fall back to a generic re-engagement intent that
-// still reads naturally in the fallback templates and guides the model well.
+// "Draft with Resonate" must never 422 on the fields the marketer didn't (or
+// couldn't) fill. The objective is optional in the builder; the audience
+// description is derived from the selected segment's rules (the user never types
+// it, but a deeply-nested segment can describe to a long string); and the brand
+// voice is a free-text input with no length cap in the UI. So each text field is
+// "soft": trimmed, defaulted when blank, and clamped to its working limit rather
+// than rejected. The blank-objective default also reads naturally in the
+// fallback templates and guides the model well.
 const DEFAULT_OBJECTIVE = "come back and enjoy something special at Brewline";
+const DEFAULT_AUDIENCE = "customers we'd love to re-engage";
+
+const OBJECTIVE_LIMIT = 300;
+const AUDIENCE_LIMIT = 500;
+const VOICE_LIMIT = 120;
+
+/**
+ * Trim; default when blank, else clamp to `max`. Deliberately CLAMPS rather than
+ * rejecting on length: Zod runs `.max()` before `.transform()`, so a `.max()`
+ * guard would 422 a long paste before the clamp ever runs. Gross payloads are
+ * bounded by the platform's request-body limit, not here — so this schema never
+ * 422s on any string the UI can produce.
+ */
+function softText(max: number, fallback: string) {
+  return (value: string | undefined): string => {
+    const trimmed = value?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed.slice(0, max) : fallback;
+  };
+}
 
 export const DraftMessagesInputSchema = z.object({
-  objective: z
-    .string()
-    .max(300)
-    .optional()
-    .transform((value) => (value && value.trim().length > 0 ? value.trim() : DEFAULT_OBJECTIVE)),
-  audienceDescription: z.string().min(1).max(500),
+  objective: z.string().optional().transform(softText(OBJECTIVE_LIMIT, DEFAULT_OBJECTIVE)),
+  audienceDescription: z.string().optional().transform(softText(AUDIENCE_LIMIT, DEFAULT_AUDIENCE)),
   channel: ChannelSchema,
-  brandVoice: z.string().max(120).optional(),
+  // Plain optional, no length rejection — clamped to VOICE_LIMIT at the point of
+  // use so it stays an optional key, which the copilot tool relies on.
+  brandVoice: z.string().optional(),
 });
 export type DraftMessagesInput = z.infer<typeof DraftMessagesInputSchema>;
 
@@ -139,8 +160,23 @@ function fallbackVariants(input: DraftMessagesInput): MessageVariant[] {
  * field the renderer wouldn't fill.
  */
 export async function draftMessages(input: DraftMessagesInput): Promise<DraftMessagesResult> {
-  const model = getAiModel();
-  const voice = input.brandVoice?.trim() || DEFAULT_VOICE;
+  const voice = input.brandVoice?.trim().slice(0, VOICE_LIMIT) || DEFAULT_VOICE;
+
+  // Resolve the provider lazily here; if no key is configured at all, degrade to
+  // safe starter copy rather than surfacing a 503. "Draft with Resonate" then
+  // always returns three editable options — the same graceful path as a model
+  // failure below — so a misconfigured deploy can't dead-end the marketer.
+  let model: LanguageModel;
+  try {
+    model = getAiModel();
+  } catch (error) {
+    console.error(
+      "[ai] draft-messages: no AI provider configured —",
+      error instanceof Error ? error.message : error,
+    );
+    return { variants: fallbackVariants(input), degraded: true };
+  }
+
   try {
     return { variants: await attempt(model, input, voice, ""), degraded: false };
   } catch (firstError) {
